@@ -1,0 +1,32 @@
+[project]
+name = "aem4-contract-change-detector"
+version = "0.1.0"
+description = "Henry AI Engineering Module 4 final project — multi-agent contract comparison with GPT-4o Vision + LangChain + Pydantic + Langfuse"
+requires-python = ">=3.11"
+dependencies = [
+    "openai>=1.50",
+    "langchain>=0.3,<2",
+    "langchain-core>=0.3,<2",
+    "langchain-openai>=0.2",
+    "pydantic>=2.7",
+    "langfuse>=4,<5",
+    "python-dotenv>=1.0",
+    "rich>=13.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "B"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# main.py manipulates sys.path so it can be invoked as `python src/main.py`.
+"src/main.py" = ["E402"]
