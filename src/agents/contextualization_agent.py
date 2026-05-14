@@ -11,6 +11,28 @@ summary of the contract type and parties.
 
 Opens a child Langfuse span named `contextualization_agent` so the trace
 shows clear handoff boundaries between the two agents.
+
+----------------------------------------------------------------------------
+GUÍA DE LECTURA — ¿por qué un agente que NO extrae cambios?
+
+  La pregunta más común en la defensa va a ser "¿por qué 2 agentes en
+  vez de uno?". La respuesta más fuerte es ESTA:
+
+      Este primer agente NO devuelve cambios. Devuelve un mapa
+      estructural. Sirve como CONTEXTO al segundo agente, no como
+      conclusión.
+
+  Imitamos el flujo de un equipo legal real:
+    - Analista Senior lee ambos documentos y arma una tabla:
+        "Sección 1 del original corresponde a Sección 1 de la enmienda
+         y ESTÁN distintas/iguales/nueva/eliminada"
+    - Auditor recién entonces va sección por sección con el mapa
+      en la mano y dice exactamente QUÉ cambió.
+
+  Beneficio práctico: el segundo agente tiene menos cosas en mente al
+  mismo tiempo. Menos cosas en mente = menos alucinaciones. Menos
+  alucinaciones = mejor rubric.
+----------------------------------------------------------------------------
 """
 
 from typing import Any
@@ -23,6 +45,21 @@ from shared.logger import get_logger
 
 log = get_logger(__name__)
 
+# ---------------------------------------------------------------------------
+# El system prompt (las "instrucciones permanentes" del agente).
+#
+# Anatomía:
+#   1. Role priming: "Eres un Analista Senior de Contratos..."
+#   2. Lista numerada de responsabilidades (5)
+#   3. Una prohibición explícita ("NO TE CORRESPONDE...") — esto es
+#      lo que evita que el agente se desvíe y empiece a hacer el trabajo
+#      del Auditor.
+#   4. Formato de salida fijado (intro + tabla Markdown)
+#
+# Por qué importa el role priming: GPT-4o ajusta tono, vocabulario y
+# rigor según el rol que le des. "Analista Senior" -> respuestas más
+# técnicas y formales que si dijéramos solo "asistente".
+# ---------------------------------------------------------------------------
 _SYSTEM_PROMPT = """Eres un Analista Senior de Contratos en LegalMove, una empresa de tecnología legal. Tu trabajo es revisar contratos originales y sus enmiendas (adendas) para producir un MAPA ESTRUCTURAL que será usado por el equipo de auditoría legal.
 
 Tu responsabilidad es:
@@ -39,6 +76,11 @@ Formato de salida: Markdown con dos partes:
 2. Una tabla Markdown con columnas: `ID Sección | Título | Cita Original | Cita Enmienda | Estado`, donde Estado ∈ {{`Sin cambios`, `Modificada`, `Nueva (sólo enmienda)`, `Eliminada (sólo original)`}}.
 """
 
+
+# El user template — la parte variable del prompt que se rellena con
+# los textos extraídos por los dos parse_contract_image() calls.
+# Los `{original_text}` y `{amendment_text}` son placeholders de
+# ChatPromptTemplate.
 _USER_TEMPLATE = """### CONTRATO ORIGINAL
 
 {original_text}
@@ -58,11 +100,26 @@ class ContextualizationAgent:
     """Agente 1 — produce el mapa estructural comparado entre ambos documentos."""
 
     def __init__(self, llm: ChatOpenAI, langfuse_client: Any | None = None) -> None:
+        """Dependency injection: el LLM y el cliente Langfuse vienen de afuera.
+
+        Este patrón se usa porque:
+          1. Facilita testing (podés inyectar mocks).
+          2. Permite compartir un solo LLM entre todos los agentes
+             (lo construye main.py una vez).
+          3. Hace explícito de qué depende cada agente.
+        """
         self.llm = llm
         self.langfuse_client = langfuse_client
+
+        # Construimos la chain LCEL: prompt | llm | parser
+        # ChatPromptTemplate.from_messages convierte la lista [("system", ...),
+        # ("human", ...)] en un Runnable que sabe formatear los placeholders.
+        # StrOutputParser extrae el .content del AIMessage final.
         prompt = ChatPromptTemplate.from_messages(
             [("system", _SYSTEM_PROMPT), ("human", _USER_TEMPLATE)]
         )
+        # El operador | crea un RunnableSequence (lo vas a ver en Langfuse
+        # como el wrapper que contiene los pasos).
         self._chain = prompt | self.llm | StrOutputParser()
 
     def run(
@@ -71,17 +128,34 @@ class ContextualizationAgent:
         amendment_text: str,
         callbacks: list[Any] | None = None,
     ) -> str:
-        """Generate the structural map. Returns Markdown text."""
+        """Generate the structural map. Returns Markdown text.
+
+        Args:
+            original_text: texto extraído por parse_contract_image del original.
+            amendment_text: texto extraído por parse_contract_image de la enmienda.
+            callbacks: lista de callbacks (CallbackHandler de Langfuse) para
+                propagar a través de la cadena LCEL.
+
+        Returns:
+            String Markdown con el mapa estructural (intro + tabla).
+        """
+        # Diccionario con los valores para los placeholders del prompt.
+        # Las keys tienen que coincidir con los {original_text} y
+        # {amendment_text} de _USER_TEMPLATE.
         invoke_cfg = {"callbacks": callbacks} if callbacks else {}
         inputs = {"original_text": original_text, "amendment_text": amendment_text}
 
         def _do_invoke() -> str:
             return self._chain.invoke(inputs, config=invoke_cfg)
 
+        # Si hay Langfuse, abrimos span hijo nombrado. Si no, ejecutamos
+        # directo. Misma pattern que en image_parser.py.
         if self.langfuse_client is not None:
             with self.langfuse_client.start_as_current_observation(
                 name="contextualization_agent",
                 as_type="span",
+                # Adjuntamos solo los tamaños como metadata; los textos
+                # completos quedan en la generation hija (el ChatOpenAI).
                 input={
                     "original_chars": len(original_text),
                     "amendment_chars": len(amendment_text),

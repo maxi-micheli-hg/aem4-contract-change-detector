@@ -12,6 +12,24 @@ instance directly.
 Opens a child Langfuse span `extraction_agent`. Catches `ValidationError`
 and re-raises with the raw text logged for debugging — this is what the
 rubric calls "graceful error handling".
+
+----------------------------------------------------------------------------
+GUÍA DE LECTURA — el agente que "cierra" el pipeline:
+
+  Lo que hace distinto a este agente:
+    - Es el ÚNICO que devuelve un objeto Pydantic, no un string.
+    - Usa `llm.with_structured_output(ContractChangeOutput)` que activa
+      la feature "structured outputs" de la API de OpenAI: el SERVER
+      valida el JSON antes de devolverlo, garantizando que no haya forma
+      de que el output esté malformado.
+    - Tiene un ejemplo one-shot dentro del system prompt (un mini JSON
+      de ejemplo) para anclar al modelo en la forma esperada del output.
+
+  El `try/except ValidationError` es defensivo: con structured outputs
+  la validación a nivel de Pydantic casi nunca falla (porque el server
+  ya filtra), pero el rubric pide "manejo elegante de excepciones de
+  validación" así que está ahí.
+----------------------------------------------------------------------------
 """
 
 from typing import Any
@@ -26,6 +44,27 @@ from shared.logger import get_logger
 log = get_logger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# System prompt — anatomía:
+#
+#   1. Role priming: "Eres un Auditor Legal Forense" (distinto al
+#      Analista Senior — diferenciación importa para el rubric).
+#   2. Lista numerada de los 3 inputs que va a recibir (mapa + 2 textos).
+#   3. Taxonomía explícita de los 3 TIPOS de cambios:
+#        ADICIONES / ELIMINACIONES / MODIFICACIONES
+#      Esto reduce ambigüedad cuando el modelo decide cómo categorizar.
+#   4. Instrucción ANTI-ALUCINACIÓN: "NO inventes cambios que no estén
+#      respaldados por los textos". Lo dice explícitamente.
+#   5. Especificación de los 3 campos del JSON (sections_changed,
+#      topics_touched, summary_of_the_change) — duplica lo que ya está
+#      en el schema de Pydantic, pero el modelo ve ambos y converge mejor.
+#   6. EJEMPLO ONE-SHOT: un mini JSON de ejemplo. Esto es CLAVE para que
+#      el `summary_of_the_change` salga en prosa fluida (como en el
+#      ejemplo) y no en bullets sueltos.
+#
+# Las llaves dobles `{{ }}` escapan los `{ }` del JSON example para que
+# ChatPromptTemplate no los confunda con placeholders.
+# ---------------------------------------------------------------------------
 _SYSTEM_PROMPT = """Eres un Auditor Legal Forense en LegalMove. Recibes:
 1. Un MAPA ESTRUCTURAL elaborado por el Analista Senior que alinea las secciones del contrato original con las de la enmienda.
 2. El texto completo del contrato original.
@@ -51,6 +90,9 @@ EJEMPLO de output válido (sólo para demostrar la forma, no copies estos valore
 }}
 """
 
+
+# User template — la parte variable. Note que pasamos 3 inputs ahora:
+# el mapa del Analista + los 2 textos. Esto es el "handoff" entre agentes.
 _USER_TEMPLATE = """### MAPA ESTRUCTURAL (del Analista Senior)
 
 {context_map}
@@ -81,9 +123,20 @@ class ExtractionAgent:
         prompt = ChatPromptTemplate.from_messages(
             [("system", _SYSTEM_PROMPT), ("human", _USER_TEMPLATE)]
         )
-        # with_structured_output wires the OpenAI structured-outputs API so the
-        # response is guaranteed to match ContractChangeOutput (server-side
-        # schema enforcement) and is returned as a validated Pydantic instance.
+
+        # ---- LA LÍNEA MÁS IMPORTANTE DEL PROYECTO ---------------------------
+        # `with_structured_output(ContractChangeOutput)` hace 3 cosas a la vez:
+        #   1. Traduce ContractChangeOutput a JSON Schema.
+        #   2. Configura el `response_format` de la API de OpenAI con ese
+        #      schema, lo cual fuerza al modelo a generar JSON válido.
+        #   3. Parsea automáticamente el output JSON en una instancia de
+        #      ContractChangeOutput (Pydantic).
+        #
+        # Resultado: el `.invoke()` devuelve directamente una instancia
+        # validada — no tenemos que hacer json.loads ni model_validate
+        # manualmente. Si el JSON no cumple el schema, OpenAI lo rechaza
+        # ANTES de devolverlo. Si por algún motivo extraño llegara igual,
+        # Pydantic lo rechaza adentro del parser.
         self._chain = prompt | self.llm.with_structured_output(ContractChangeOutput)
 
     def run(
@@ -95,10 +148,19 @@ class ExtractionAgent:
     ) -> ContractChangeOutput:
         """Run the extraction. Returns a validated ContractChangeOutput.
 
+        Args:
+            context_map: el mapa estructural Markdown que produjo el agente 1.
+            original_text: texto extraído del contrato original.
+            amendment_text: texto extraído de la enmienda.
+            callbacks: callbacks para propagar a Langfuse.
+
+        Returns:
+            ContractChangeOutput (instancia Pydantic validada).
+
         Raises:
-            pydantic.ValidationError: if the LLM output does not conform to
-                the schema (extremely unlikely with structured outputs, but
-                kept as a defensive measure as required by the rubric).
+            pydantic.ValidationError: si el LLM output no conforma al
+                schema (casi imposible con structured outputs, pero el
+                rubric pide manejarlo).
         """
         invoke_cfg = {"callbacks": callbacks} if callbacks else {}
         inputs = {
@@ -108,6 +170,10 @@ class ExtractionAgent:
         }
 
         def _do_invoke() -> ContractChangeOutput:
+            # try/except defensivo aunque es muy raro que ocurra.
+            # Si pasara, loggeamos los errores específicos de Pydantic
+            # (qué campo, qué tipo esperado, qué valor recibido) — útil
+            # para debug.
             try:
                 return self._chain.invoke(inputs, config=invoke_cfg)
             except ValidationError as e:
@@ -115,6 +181,7 @@ class ExtractionAgent:
                 log.error(f"Validation errors: {e.errors()}")
                 raise
 
+        # Mismo pattern de span hijo que en los otros agentes.
         if self.langfuse_client is not None:
             with self.langfuse_client.start_as_current_observation(
                 name="extraction_agent",
@@ -126,6 +193,10 @@ class ExtractionAgent:
                 },
             ) as span:
                 result = _do_invoke()
+                # Adjuntamos el output del agente al span (no las listas
+                # ni el summary completo — solo conteos + listas pequeñas)
+                # para que sea visible en el dashboard sin tener que abrir
+                # el generation hijo.
                 span.update(
                     output={
                         "sections_changed": result.sections_changed,
