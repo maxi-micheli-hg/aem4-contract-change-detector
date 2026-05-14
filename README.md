@@ -55,7 +55,9 @@ contract-analysis (root span — opened in main.py)
     └── ChatOpenAI                (generation — structured output)
 ```
 
-A screenshot of one full trace is at [`docs/langfuse_trace.png`](docs/langfuse_trace.png).
+A screenshot of one full trace from the live system (Pair 1 — Software License + new "Protección de Datos" clause):
+
+![Langfuse trace hierarchy showing contract-analysis root span with four named child spans and their nested ChatOpenAI generations](docs/langfuse_trace.png)
 
 ## Project layout
 
