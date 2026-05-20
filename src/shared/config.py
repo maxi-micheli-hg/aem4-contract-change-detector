@@ -1,8 +1,8 @@
-"""Environment + credentials loader.
+"""Loader de entorno y credenciales.
 
-Loads `.env` from the project root (one level up from `src/`). Provides
-typed accessors for OpenAI and Langfuse credentials that raise loud,
-actionable errors when a key is missing.
+Carga `.env` desde la raíz del proyecto (un nivel arriba de `src/`). Provee
+accesores tipados para las credenciales de OpenAI y Langfuse que lanzan
+errores claros y accionables cuando falta una key.
 """
 
 import os
@@ -15,7 +15,7 @@ _ENV_FILE = _MODULE_ROOT / ".env"
 
 
 def load_env() -> None:
-    """Load `.env` once. Subsequent calls are no-ops thanks to dotenv."""
+    """Carga `.env` una vez. Las llamadas subsiguientes son no-op gracias a dotenv."""
     load_dotenv(_ENV_FILE, override=False)
 
 
@@ -24,16 +24,18 @@ def get_module_root() -> Path:
 
 
 def get_openai_api_key() -> str:
+    """Devuelve la OPENAI_API_KEY desde el `.env`. Lanza EnvironmentError si falta."""
     load_env()
     key = os.getenv("OPENAI_API_KEY")
     if not key or key.startswith("sk-..."):
         raise EnvironmentError(
-            f"OPENAI_API_KEY is missing.\n  Add it to {_ENV_FILE} (copy from .env.example)."
+            f"Falta OPENAI_API_KEY.\n  Agregala a {_ENV_FILE} (copiar desde .env.example)."
         )
     return key
 
 
 def get_langfuse_credentials() -> dict[str, str]:
+    """Devuelve un dict con las 3 credenciales de Langfuse. Lanza si faltan las keys."""
     load_env()
     creds = {
         "public_key": os.getenv("LANGFUSE_PUBLIC_KEY", ""),
@@ -42,8 +44,8 @@ def get_langfuse_credentials() -> dict[str, str]:
     }
     if not creds["public_key"] or not creds["secret_key"]:
         raise EnvironmentError(
-            "LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY are missing.\n"
-            f"  Add them to {_ENV_FILE}, or call get_observability(enabled=False) "
-            f"to run without trace capture."
+            "Faltan LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY.\n"
+            f"  Agregalas a {_ENV_FILE}, o llamá a get_observability(enabled=False) "
+            f"para correr sin captura de trazas."
         )
     return creds

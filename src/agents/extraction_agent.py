@@ -1,17 +1,18 @@
 """ExtractionAgent — Agente 2: "Auditor Legal Forense".
 
-Receives the structural map from the ContextualizationAgent plus both contract
-texts, and produces a strictly-validated `ContractChangeOutput` (Pydantic).
+Recibe el mapa estructural del ContextualizationAgent más los dos textos
+del contrato, y produce un `ContractChangeOutput` (Pydantic) estrictamente
+validado.
 
-This agent does the actual change extraction: additions (new clauses),
-deletions (clauses removed in the amendment), and modifications (rewordings
-or new values). It uses LangChain's `with_structured_output()` so the OpenAI
-API enforces the schema server-side and returns a validated Pydantic
-instance directly.
+Este agente hace la extracción real de cambios: adiciones (cláusulas
+nuevas), eliminaciones (cláusulas removidas en la enmienda) y modificaciones
+(re-redactados o nuevos valores). Usa `with_structured_output()` de
+LangChain para que la API de OpenAI fuerce el schema server-side y devuelva
+una instancia Pydantic validada directamente.
 
-Opens a child Langfuse span `extraction_agent`. Catches `ValidationError`
-and re-raises with the raw text logged for debugging — this is what the
-rubric calls "graceful error handling".
+Abre un span hijo de Langfuse `extraction_agent`. Captura `ValidationError`
+y re-lanza con el texto crudo logueado para debugging — eso es lo que la
+rúbrica llama "manejo elegante de errores".
 
 ----------------------------------------------------------------------------
 GUÍA DE LECTURA — el agente que "cierra" el pipeline:
@@ -19,7 +20,7 @@ GUÍA DE LECTURA — el agente que "cierra" el pipeline:
   Lo que hace distinto a este agente:
     - Es el ÚNICO que devuelve un objeto Pydantic, no un string.
     - Usa `llm.with_structured_output(ContractChangeOutput)` que activa
-      la feature "structured outputs" de la API de OpenAI: el SERVER
+      la feature "structured outputs" de la API de OpenAI: el SERVIDOR
       valida el JSON antes de devolverlo, garantizando que no haya forma
       de que el output esté malformado.
     - Tiene un ejemplo one-shot dentro del system prompt (un mini JSON
@@ -27,7 +28,7 @@ GUÍA DE LECTURA — el agente que "cierra" el pipeline:
 
   El `try/except ValidationError` es defensivo: con structured outputs
   la validación a nivel de Pydantic casi nunca falla (porque el server
-  ya filtra), pero el rubric pide "manejo elegante de excepciones de
+  ya filtra), pero la rúbrica pide "manejo elegante de excepciones de
   validación" así que está ahí.
 ----------------------------------------------------------------------------
 """
@@ -48,7 +49,7 @@ log = get_logger(__name__)
 # System prompt — anatomía:
 #
 #   1. Role priming: "Eres un Auditor Legal Forense" (distinto al
-#      Analista Senior — diferenciación importa para el rubric).
+#      Analista Senior — diferenciación importa para la rúbrica).
 #   2. Lista numerada de los 3 inputs que va a recibir (mapa + 2 textos).
 #   3. Taxonomía explícita de los 3 TIPOS de cambios:
 #        ADICIONES / ELIMINACIONES / MODIFICACIONES
@@ -91,7 +92,7 @@ EJEMPLO de output válido (sólo para demostrar la forma, no copies estos valore
 """
 
 
-# User template — la parte variable. Note que pasamos 3 inputs ahora:
+# User template — la parte variable. Notar que pasamos 3 inputs ahora:
 # el mapa del Analista + los 2 textos. Esto es el "handoff" entre agentes.
 _USER_TEMPLATE = """### MAPA ESTRUCTURAL (del Analista Senior)
 
@@ -146,7 +147,7 @@ class ExtractionAgent:
         amendment_text: str,
         callbacks: list[Any] | None = None,
     ) -> ContractChangeOutput:
-        """Run the extraction. Returns a validated ContractChangeOutput.
+        """Ejecuta la extracción. Devuelve un ContractChangeOutput validado.
 
         Args:
             context_map: el mapa estructural Markdown que produjo el agente 1.
@@ -158,9 +159,9 @@ class ExtractionAgent:
             ContractChangeOutput (instancia Pydantic validada).
 
         Raises:
-            pydantic.ValidationError: si el LLM output no conforma al
-                schema (casi imposible con structured outputs, pero el
-                rubric pide manejarlo).
+            pydantic.ValidationError: si el output del LLM no conforma al
+                schema (casi imposible con structured outputs, pero la
+                rúbrica pide manejarlo).
         """
         invoke_cfg = {"callbacks": callbacks} if callbacks else {}
         inputs = {
@@ -177,11 +178,11 @@ class ExtractionAgent:
             try:
                 return self._chain.invoke(inputs, config=invoke_cfg)
             except ValidationError as e:
-                log.error("[error]extraction_agent: Pydantic validation failed[/error]")
-                log.error(f"Validation errors: {e.errors()}")
+                log.error("[error]extraction_agent: falló la validación Pydantic[/error]")
+                log.error(f"Errores de validación: {e.errors()}")
                 raise
 
-        # Mismo pattern de span hijo que en los otros agentes.
+        # Mismo patrón de span hijo que en los otros agentes.
         if self.langfuse_client is not None:
             with self.langfuse_client.start_as_current_observation(
                 name="extraction_agent",
@@ -208,7 +209,7 @@ class ExtractionAgent:
             result = _do_invoke()
 
         log.info(
-            f"[success]extraction_agent: {len(result.sections_changed)} sections, "
-            f"{len(result.topics_touched)} topics[/success]"
+            f"[success]extraction_agent: {len(result.sections_changed)} secciones, "
+            f"{len(result.topics_touched)} temas[/success]"
         )
         return result

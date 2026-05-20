@@ -1,7 +1,7 @@
 [project]
 name = "aem4-contract-change-detector"
 version = "0.1.0"
-description = "Henry AI Engineering Module 4 final project — multi-agent contract comparison with GPT-4o Vision + LangChain + Pydantic + Langfuse"
+description = "Henry AI Engineering Módulo 4 proyecto final — comparación multi-agente de contratos con GPT-4o Vision + LangChain + Pydantic + Langfuse"
 requires-python = ">=3.11"
 dependencies = [
     "openai>=1.50",

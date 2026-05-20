@@ -1,16 +1,17 @@
 """ContextualizationAgent — Agente 1: "Analista Senior de Contratos".
 
-Receives the full text of the original contract and its amendment, and
-produces a structural map (Markdown) that aligns sections between the two
-documents. This map is then passed to the ExtractionAgent so it can focus on
-identifying changes rather than re-establishing structural correspondences.
+Recibe el texto completo del contrato original y su enmienda, y produce un
+mapa estructural (Markdown) que alinea las secciones entre ambos documentos.
+Ese mapa se pasa después al ExtractionAgent para que pueda enfocarse en
+identificar cambios en lugar de tener que re-establecer las correspondencias
+estructurales.
 
-Crucially this agent DOES NOT enumerate changes — that is the auditor's job.
-Its only output is the structural alignment + a one-paragraph executive
-summary of the contract type and parties.
+Crucialmente este agente NO enumera cambios — ese es el trabajo del auditor.
+Su único output es la alineación estructural + un resumen ejecutivo de una
+sola línea con el tipo de contrato y las partes.
 
-Opens a child Langfuse span named `contextualization_agent` so the trace
-shows clear handoff boundaries between the two agents.
+Abre un span hijo de Langfuse llamado `contextualization_agent` para que la
+traza muestre límites claros del handoff entre los dos agentes.
 
 ----------------------------------------------------------------------------
 GUÍA DE LECTURA — ¿por qué un agente que NO extrae cambios?
@@ -31,7 +32,7 @@ GUÍA DE LECTURA — ¿por qué un agente que NO extrae cambios?
 
   Beneficio práctico: el segundo agente tiene menos cosas en mente al
   mismo tiempo. Menos cosas en mente = menos alucinaciones. Menos
-  alucinaciones = mejor rubric.
+  alucinaciones = mejor rúbrica.
 ----------------------------------------------------------------------------
 """
 
@@ -100,7 +101,7 @@ class ContextualizationAgent:
     """Agente 1 — produce el mapa estructural comparado entre ambos documentos."""
 
     def __init__(self, llm: ChatOpenAI, langfuse_client: Any | None = None) -> None:
-        """Dependency injection: el LLM y el cliente Langfuse vienen de afuera.
+        """Inyección de dependencias: el LLM y el cliente Langfuse vienen de afuera.
 
         Este patrón se usa porque:
           1. Facilita testing (podés inyectar mocks).
@@ -128,7 +129,7 @@ class ContextualizationAgent:
         amendment_text: str,
         callbacks: list[Any] | None = None,
     ) -> str:
-        """Generate the structural map. Returns Markdown text.
+        """Genera el mapa estructural. Devuelve texto Markdown.
 
         Args:
             original_text: texto extraído por parse_contract_image del original.
@@ -149,7 +150,7 @@ class ContextualizationAgent:
             return self._chain.invoke(inputs, config=invoke_cfg)
 
         # Si hay Langfuse, abrimos span hijo nombrado. Si no, ejecutamos
-        # directo. Misma pattern que en image_parser.py.
+        # directo. Mismo patrón que en image_parser.py.
         if self.langfuse_client is not None:
             with self.langfuse_client.start_as_current_observation(
                 name="contextualization_agent",
@@ -171,5 +172,7 @@ class ContextualizationAgent:
         else:
             result = _do_invoke()
 
-        log.info(f"[success]contextualization_agent: produced {len(result)}-char map[/success]")
+        log.info(
+            f"[success]contextualization_agent: mapa de {len(result)} caracteres producido[/success]"
+        )
         return result

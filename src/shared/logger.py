@@ -1,3 +1,10 @@
+"""Logger basado en Rich con un theme custom.
+
+Provee `get_logger(name)` que devuelve un Logger estándar de Python pero
+ruteado a través de un `RichHandler` con un theme custom que entiende los
+tags `[success]`, `[warn]` y `[error]` para colorear las líneas.
+"""
+
 import logging
 
 from rich.console import Console

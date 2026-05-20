@@ -1,10 +1,10 @@
 # Contract Change Detector
 
-Autonomous multi-agent system that compares the scanned image of an **original contract** with its **amendment / adenda** and returns a strictly-validated JSON describing every change. Built for the **Henry AI Engineering** bootcamp's Module 4 final project (LegalMove case).
+Sistema multi-agente autónomo que compara la imagen escaneada de un **contrato original** con su **enmienda (adenda)** y devuelve un JSON estrictamente validado describiendo cada cambio. Construido para el proyecto final del Módulo 4 del bootcamp **Henry AI Engineering** (caso LegalMove).
 
-The fictional client is *LegalMove*, a legal-tech company whose compliance team spends 40+ weekly hours doing this comparison manually. The system replaces that with an auditable, observability-rich pipeline.
+El cliente ficticio es *LegalMove*, una empresa de tecnología legal cuyo equipo de Compliance gasta más de 40 horas semanales haciendo esta comparación manualmente. El sistema reemplaza ese proceso con un pipeline auditable y rico en observabilidad.
 
-## Architecture
+## Arquitectura
 
 ```mermaid
 flowchart TD
@@ -12,190 +12,195 @@ flowchart TD
     A2[amendment.jpg] --> P2
     P1[parse_contract_image<br/><i>GPT-4o Vision · base64</i>] --> CTX
     P2[parse_contract_image<br/><i>GPT-4o Vision · base64</i>] --> CTX
-    CTX[ContextualizationAgent<br/><i>Analista Senior · structural map</i>] --> EXT
+    CTX[ContextualizationAgent<br/><i>Analista Senior · mapa estructural</i>] --> EXT
     P1 --> EXT
     P2 --> EXT
-    EXT[ExtractionAgent<br/><i>Auditor Legal · with_structured_output</i>] --> OUT[ContractChangeOutput<br/>Pydantic JSON]
+    EXT[ExtractionAgent<br/><i>Auditor Legal · with_structured_output</i>] --> OUT[ContractChangeOutput<br/>JSON Pydantic]
 ```
 
-ASCII fallback:
+Fallback ASCII:
 
 ```
    original.jpg            amendment.jpg
         |                       |
         v                       v
- parse_contract_image    parse_contract_image      <- GPT-4o Vision (base64 data URL)
+ parse_contract_image    parse_contract_image      <- GPT-4o Vision (data URL base64)
         |                       |
         +-----------+-----------+
                     v
        ContextualizationAgent                       <- "Analista Senior"
-       (structural map: sections aligned, no diffs)
+       (mapa estructural: secciones alineadas, sin cambios todavía)
                     |
                     v
        ExtractionAgent                              <- "Auditor Legal Forense"
-       with_structured_output(ContractChangeOutput) <- OpenAI structured outputs
+       with_structured_output(ContractChangeOutput) <- structured outputs de OpenAI
                     |
                     v
-            Pydantic JSON
+            JSON Pydantic
 ```
 
-### Langfuse span hierarchy
+### Jerarquía de spans en Langfuse
 
-Every run is captured under one root span (`contract-analysis`) with four named child spans, each holding a nested `ChatOpenAI` `generation` observation produced automatically by the LangChain callback handler:
+Cada ejecución se captura bajo un span raíz (`contract-analysis`) con cuatro spans hijos nombrados; cada uno contiene un `generation` anidado de `ChatOpenAI` que produce automáticamente el `CallbackHandler` de LangChain:
 
 ```
-contract-analysis (root span — opened in main.py)
+contract-analysis (span raíz — abierto en main.py)
 ├── parse_original_contract       (span)
-│   └── ChatOpenAI                (generation — input image + extracted text, tokens, latency)
+│   └── ChatOpenAI                (generation — imagen + texto extraído, tokens, latencia)
 ├── parse_amendment_contract      (span)
 │   └── ChatOpenAI                (generation)
-├── contextualization_agent       (span — structural map output preview)
+├── contextualization_agent       (span — output: preview del mapa estructural)
 │   └── ChatOpenAI                (generation)
-└── extraction_agent              (span — final JSON output)
+└── extraction_agent              (span — output: JSON final)
     └── ChatOpenAI                (generation — structured output)
 ```
 
-A screenshot of one full trace from the live system (Pair 1 — Software License + new "Protección de Datos" clause):
+Una captura de una traza completa se encuentra abajo:
 
-![Langfuse trace hierarchy showing contract-analysis root span with four named child spans and their nested ChatOpenAI generations](docs/langfuse_trace.png)
+![Jerarquía de la traza de Langfuse mostrando el span raíz contract-analysis con cuatro spans hijos nombrados y sus generations anidadas de ChatOpenAI](docs/langfuse_trace.png)
 
-## Project layout
+## Estructura del proyecto
 
 ```
 .
 ├── README.md
-├── pyproject.toml          (uv-managed deps + ruff config)
-├── requirements.txt        (exported from uv lockfile)
+├── GUIA.md                  (guía de estudio detallada del proyecto)
+├── pyproject.toml          (gestionado con uv + config de ruff)
+├── requirements.txt        (exportado desde el lockfile de uv)
 ├── .env.example            (OPENAI_API_KEY, LANGFUSE_*)
 ├── .env                    (gitignored)
 ├── docs/
-│   └── langfuse_trace.png  (screenshot of one full trace)
+│   └── langfuse_trace.png  (captura de una traza completa)
 ├── data/
-│   └── test_contracts/     (3 pairs of JPGs + README documenting expected diffs)
+│   └── test_contracts/     (3 pares de JPGs + README documentando los cambios esperados)
 └── src/
-    ├── main.py             (argparse, opens root Langfuse span, sequences the pipeline)
-    ├── image_parser.py     (base64 + multimodal HumanMessage to GPT-4o Vision)
-    ├── models.py           (Pydantic ContractChangeOutput)
+    ├── main.py             (argparse, abre el span raíz de Langfuse, secuencia el pipeline)
+    ├── image_parser.py     (base64 + HumanMessage multimodal a GPT-4o Vision)
+    ├── models.py           (ContractChangeOutput de Pydantic)
     ├── agents/
-    │   ├── contextualization_agent.py   (Agent 1 — structural map)
-    │   └── extraction_agent.py          (Agent 2 — with_structured_output)
+    │   ├── contextualization_agent.py   (Agente 1 — mapa estructural)
+    │   └── extraction_agent.py          (Agente 2 — with_structured_output)
     └── shared/
-        ├── config.py          (.env loader + typed credentials)
-        ├── logger.py          (Rich logger)
-        └── observability.py   (Langfuse client + CallbackHandler factory)
+        ├── config.py          (loader de .env + accesores tipados de credenciales)
+        ├── logger.py          (logger con Rich)
+        └── observability.py   (factory del cliente Langfuse + CallbackHandler)
 ```
 
 ## Setup
 
-Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/) (`pipx install uv`, `brew install uv`, or `winget install astral-sh.uv`). If you prefer `pip`, see the *pip alternative* note below.
+Requiere Python 3.11+ y [uv](https://docs.astral.sh/uv/) (`pipx install uv`, `brew install uv` o `winget install astral-sh.uv`). Si preferís `pip`, mirá la nota *Alternativa con pip* más abajo.
 
 ```bash
-# 1. Install dependencies
+# 1. Instalar dependencias
 uv sync
 
-# 2. Configure credentials
+# 2. Configurar credenciales
 cp .env.example .env
-# Then edit .env with your OPENAI_API_KEY, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY.
-# Default LANGFUSE_HOST is the US cloud — change to https://cloud.langfuse.com for EU.
+# Editar .env con tus OPENAI_API_KEY, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY.
+# El LANGFUSE_HOST por default es la cloud de US — cambiar a https://cloud.langfuse.com para EU.
 
-# 3. Run on one of the test pairs
+# 3. Correr sobre uno de los pares de prueba
 uv run python src/main.py data/test_contracts/contract_1_original.jpg data/test_contracts/contract_1_amendment.jpg
 ```
 
-> **pip alternative:** `python -m venv .venv && .venv/Scripts/activate && pip install -r requirements.txt` (Linux/macOS: `source .venv/bin/activate`). Then drop the `uv run` prefix.
+> **Alternativa con pip:** `python -m venv .venv && .venv/Scripts/activate && pip install -r requirements.txt` (Linux/macOS: `source .venv/bin/activate`). Después se omite el prefijo `uv run`.
 
-> **Windows + OneDrive note:** if the repo lives in a OneDrive-synced folder, prefix uv commands with `UV_LINK_MODE=copy`, and optionally `UV_PROJECT_ENVIRONMENT=C:/Temp/aem4-venv` to keep `.venv` outside OneDrive. OneDrive interferes with hardlinks during dependency installation.
+> **Nota Windows + OneDrive:** si el repo vive en una carpeta sincronizada con OneDrive, prefijá los comandos uv con `UV_LINK_MODE=copy` y opcionalmente `UV_PROJECT_ENVIRONMENT=C:/Temp/aem4-venv` para mantener el `.venv` fuera de OneDrive. OneDrive interfiere con los hardlinks durante la instalación de dependencias.
 
-## Usage
+## Uso
 
-The entry point takes two positional arguments — the path to the original contract image and the path to the amendment image — in that order:
+El entry point recibe dos argumentos posicionales — la ruta al contrato original y la ruta a la enmienda, en ese orden:
 
 ```bash
-# Pair 1 — Software License (5 changes incl. new "Protección de Datos" clause)
+# Par 1 — Licencia de Software (5 cambios, incluyendo nueva cláusula "Protección de Datos")
 uv run python src/main.py \
   data/test_contracts/contract_1_original.jpg \
   data/test_contracts/contract_1_amendment.jpg
 
-# Pair 2 — Consulting Services (5 changes incl. new "Propiedad Intelectual" clause)
+# Par 2 — Consultoría (5 cambios, incluyendo nueva cláusula "Propiedad Intelectual")
 uv run python src/main.py \
   data/test_contracts/contract_2_original.jpg \
   data/test_contracts/contract_2_amendment.jpg
 
-# Pair 3 — SaaS Agreement (3 simpler changes, no new clauses)
+# Par 3 — SaaS (3 cambios más simples, sin cláusulas nuevas)
 uv run python src/main.py \
   data/test_contracts/contract_3_original.jpg \
   data/test_contracts/contract_3_amendment.jpg
 ```
 
 Flags:
-- `--no-langfuse` disables Langfuse for offline debugging (the pipeline still runs).
+- `--no-langfuse` desactiva el tracing de Langfuse (debug offline; el pipeline corre igual).
 
-Exit codes:
-- `0` success — JSON printed to stdout
-- `1` Pydantic `ValidationError` (extractor returned malformed JSON)
-- `2` IO / unsupported file / API error after retries
+Códigos de salida:
+- `0` éxito — JSON impreso por stdout
+- `1` `ValidationError` de Pydantic (el extractor devolvió JSON malformado)
+- `2` error de IO / archivo no soportado / error de API tras los reintentos
 
-See [`data/test_contracts/README.md`](data/test_contracts/README.md) for the expected changes per pair (ground truth from the bootcamp).
+Mirá [`data/test_contracts/README.md`](data/test_contracts/README.md) para los cambios esperados de cada par (ground truth del bootcamp).
 
-## Technical justifications
+## Justificaciones técnicas
 
-This section anticipates the four standard defense questions.
+Esta sección anticipa las cuatro preguntas estándar de la defensa.
 
-### 1. Why two agents instead of one monolithic LLM call?
+### 1. ¿Por qué dos agentes en lugar de uno monolítico?
 
-Separating **contextualization** from **extraction** mirrors how a real legal team works: a senior analyst first establishes which sections of the two documents correspond, then a forensic auditor goes section by section to enumerate concrete diffs. The benefits in code:
+Separar **contextualización** de **extracción** imita la forma en que trabajaría un equipo legal real: un analista senior primero establece qué secciones de los dos documentos se corresponden, y recién entonces un auditor forense recorre sección por sección enumerando las diferencias concretas. Beneficios en el código:
 
-- **Smaller, focused prompts** — each agent has 4-5 numbered responsibilities instead of one prompt trying to do everything. Less prompt drift, fewer hallucinated changes.
-- **Inspectable handoff** — the ContextualizationAgent's structural map is plain Markdown, so during debugging you can read it and see whether the model already misaligned a section before the auditor got involved.
-- **Cleaner observability** — each agent has its own Langfuse span; tokens, latency, and outputs are attributed per stage rather than pooled into one fat call.
+- **Prompts más cortos y focalizados** — cada agente tiene 4-5 responsabilidades numeradas en lugar de un único prompt intentando hacer todo. Menos drift de prompt, menos cambios alucinados.
+- **Handoff inspectable** — el mapa estructural que produce el ContextualizationAgent es Markdown plano; durante el debug podés leerlo y ver si el modelo desalineó alguna sección antes de que el auditor entrara en acción.
+- **Observabilidad más limpia** — cada agente tiene su propio span en Langfuse; los tokens, la latencia y los outputs quedan atribuidos por etapa en lugar de mezclados en una sola llamada.
 
-### 2. Why GPT-4o for the vision parsing?
+### 2. ¿Por qué GPT-4o para el parsing de visión?
 
-GPT-4o is currently the strongest mainstream model at:
+GPT-4o es actualmente el modelo mainstream más fuerte en:
 
-- **Spanish OCR** on document scans (the bootcamp's images are in Spanish).
-- **Hierarchical extraction** — numbered clauses, sub-numbering (1.1, 1.2), preserved order of paragraphs.
-- **Joint reasoning + transcription** — the same call that reads pixels also follows our "preserve numbering and hierarchy, no comments" instruction, removing the need for a separate cleanup pass.
+- **OCR en español** sobre escaneos de documentos (las imágenes del bootcamp están en español).
+- **Extracción jerárquica** — cláusulas numeradas, sub-numeración (1.1, 1.2), orden original de los párrafos.
+- **Razonamiento + transcripción en una sola llamada** — la misma invocación que "ve" los píxeles también obedece nuestra instrucción de "preservar numeración y jerarquía, sin comentarios", eliminando la necesidad de un pase de limpieza posterior.
 
-A pure OCR pipeline (Tesseract, AWS Textract) would lose layout cues and require a second LLM to restructure the text. The two-stage round-trip would cost roughly the same in tokens and add latency.
+Un pipeline solo de OCR (Tesseract, AWS Textract) perdería las pistas de layout y requeriría un segundo LLM para reestructurar el texto. El round-trip de dos etapas costaría aproximadamente lo mismo en tokens y agregaría latencia.
 
-### 3. How are the prompts designed?
+### 3. ¿Cómo están diseñados los prompts?
 
-- **Role priming** — each agent's system prompt opens with `"Eres un Analista Senior..."` / `"Eres un Auditor Legal Forense..."`. Specific named roles reliably steer GPT-4o's tone and rigor.
-- **Numbered responsibilities** — bulleted lists of what to do *and* what NOT to do (e.g., contextualization explicitly says "NO TE CORRESPONDE describir los cambios en detalle").
-- **One-shot example for the extractor** — the system prompt shows a sample JSON output so the model anchors on shape and style (Spanish prose, old→new value citations).
-- **`temperature=0`** — reproducible runs for the live demo and for cross-checking against the ground-truth doc.
-- **`Field(..., description=...)` on every Pydantic field** — these descriptions are forwarded to OpenAI's structured-outputs API as the JSON-schema `description` for each property, so GPT-4o reads them as part of its generation guidance. This is why the JSON's Spanish prose comes out idiomatic without explicit formatting instructions inside the user prompt.
+- **Role priming** — el system prompt de cada agente arranca con `"Eres un Analista Senior..."` / `"Eres un Auditor Legal Forense..."`. Los roles específicos guían tono y rigor de manera confiable en GPT-4o.
+- **Responsabilidades numeradas** — listas con bullets de qué hacer *y* qué NO hacer (por ejemplo, contextualización dice explícitamente "NO TE CORRESPONDE describir los cambios en detalle").
+- **Ejemplo one-shot para el extractor** — el system prompt muestra una muestra de JSON output para anclar al modelo en la forma y el estilo esperados (prosa en español, citas old → new).
+- **`temperature=0`** — ejecuciones reproducibles para la defensa en vivo y para cruzar contra el documento ground-truth.
+- **`Field(..., description=...)` rico en cada campo de Pydantic** — esas descripciones se envían a la API de structured outputs de OpenAI como el `description` JSON-schema de cada propiedad, así que GPT-4o las lee como parte de la guía de generación. Por eso la prosa en español del JSON sale idiomática sin instrucciones explícitas de formato dentro del user prompt.
 
-### 4. How are errors handled?
+### 4. ¿Cómo se manejan los errores?
 
-Four named failure classes, no broader catches:
+Cuatro clases de fallo nombradas, sin catches genéricos más amplios:
 
-| Class | Where | Behavior |
+| Clase | Dónde | Comportamiento |
 | --- | --- | --- |
-| `FileNotFoundError` / `ValueError` | `image_parser._encode_image` and path validation | Surface immediately, exit code 2. No fallback paths — silent fallback would mask the operator's input mistake. |
-| Base64 encoding error | `_encode_image` `try/except` | Catch + re-raise with context (which file failed). |
-| `openai.APITimeoutError` / `RateLimitError` | `ChatOpenAI(max_retries=2, timeout=60)` | Two automatic retries with exponential backoff via the OpenAI SDK; if still failing, exit code 2. The 60-second timeout (vs the SDK default of 600s) makes stuck vision calls fail fast during development. |
-| `pydantic.ValidationError` | `extraction_agent.run` | Logs the validation error details and re-raises. Exit code 1. Structured outputs make this almost impossible in practice, but the catch is required by the rubric and useful for the rare case the schema is widened in a future refactor. |
+| `FileNotFoundError` / `ValueError` | `image_parser._encode_image` y validación de path | Surface inmediato, exit code 2. Sin paths de fallback — un fallback silencioso enmascararía el error de input del operador. |
+| Error de encoding base64 | `try/except` en `_encode_image` | Captura + re-raise con contexto (qué archivo falló). |
+| `openai.APITimeoutError` / `RateLimitError` | `ChatOpenAI(max_retries=2, timeout=60)` | Dos reintentos automáticos con backoff exponencial vía el SDK de OpenAI; si sigue fallando, exit code 2. El timeout de 60s (vs el default de 600s del SDK) hace que las llamadas de visión colgadas fallen rápido durante desarrollo. |
+| `pydantic.ValidationError` | `extraction_agent.run` | Loggea los detalles del error de validación y re-raise. Exit code 1. Los structured outputs hacen esto casi imposible en la práctica, pero el catch está pedido por la rúbrica y es útil para el raro caso en que se amplíe el schema en un refactor futuro. |
 
-No `try/except Exception: pass`, no silent retries beyond the SDK's built-in one. The principle: an error visible to the operator is more valuable than a "successful" run with garbage output.
+Sin `try/except Exception: pass`, sin reintentos silenciosos más allá del que ya hace el SDK. El principio: un error visible al operador vale más que una corrida "exitosa" con basura adentro.
 
-## Tech stack
+## Stack técnico
 
-- **LLM:** OpenAI **GPT-4o** (`gpt-4o`) — used for both Vision parsing and the two text agents
-- **Framework:** **LangChain** (`langchain-openai`, `langchain-core`) — `ChatOpenAI`, LCEL chains, `HumanMessage` multimodal content, `with_structured_output`, callback propagation
-- **Validation:** **Pydantic** (v2) with `Field(description=...)` annotations forwarded to OpenAI structured outputs
-- **Observability:** **Langfuse** v4 — explicit `start_as_current_observation` for the four named spans, `CallbackHandler` for automatic LLM generation capture
-- **Env mgmt:** `python-dotenv`
-- **Package management:** `uv` (with `requirements.txt` exported for pip compatibility)
+- **LLM:** OpenAI **GPT-4o** (`gpt-4o`) — usado tanto para el parsing de visión como para los dos agentes de texto
+- **Framework:** **LangChain** (`langchain-openai`, `langchain-core`) — `ChatOpenAI`, chains LCEL, contenido multimodal de `HumanMessage`, `with_structured_output`, propagación de callbacks
+- **Validación:** **Pydantic** (v2) con anotaciones `Field(description=...)` que se reenvían a los structured outputs de OpenAI
+- **Observabilidad:** **Langfuse** v4 — `start_as_current_observation` explícito para los cuatro spans nombrados, `CallbackHandler` para captura automática de las generations del LLM
+- **Manejo de env:** `python-dotenv`
+- **Gestión de paquetes:** `uv` (con `requirements.txt` exportado para compatibilidad con pip)
 
-## Known limitations
+## Limitaciones conocidas
 
-- **Single-page contracts only** — the demo corpus is one-page-each. Multi-page PDFs would need an extra step that splits pages into multiple parse calls and concatenates the resulting Markdown.
-- **Synchronous pipeline** — the two image-parse calls are sequential, not parallel. For larger volumes they could be sent concurrently with `asyncio.gather`.
-- **No human review queue** — the system produces a confidence-1.0 JSON and assumes downstream automation. A production deployment would gate on a confidence score and route low-confidence cases to a human paralegal.
-- **Vision token cost** — GPT-4o Vision is the most expensive single call in the pipeline (~$0.02 per page at default detail). A cheaper-but-still-good fallback would be `gpt-4o-mini` with `detail="low"` for triage.
+- **Solo contratos de una página** — el corpus de demo tiene una página por archivo. Para PDFs multi-página harían falta pasos adicionales que dividan páginas en múltiples llamadas de parsing y concatenen el Markdown resultante.
+- **Pipeline secuencial** — las dos llamadas de parsing de imágenes son secuenciales, no paralelas. Para volúmenes mayores podrían enviarse en paralelo con `asyncio.gather`.
+- **Sin cola de revisión humana** — el sistema produce un JSON con confianza implícita 1.0 y asume automatización aguas abajo. Un deployment de producción gatillaría a un score de confianza y rutearía los casos de baja confianza a un paralegal humano.
+- **Costo de tokens de visión** — GPT-4o Vision es la llamada más cara del pipeline (~$0.02 por página en detail por default). Un fallback más barato pero todavía aceptable sería `gpt-4o-mini` con `detail="low"` para triage inicial.
 
-## Course context
+## Contexto del curso
 
-Built as the **Henry AI Engineering bootcamp Module 4 final project** (capstone). The companion Module 3 project (multi-domain RAG ticket routing) lives at [aem3-multi-agent-ticket-routing](https://github.com/maxi-micheli-hg/aem3-multi-agent-ticket-routing).
+Construido como **proyecto final (capstone) del Módulo 4 del bootcamp Henry AI Engineering**. El proyecto del Módulo 3 (RAG multi-dominio para ticket routing) está en [aem3-multi-agent-ticket-routing](https://github.com/maxi-micheli-hg/aem3-multi-agent-ticket-routing).
+
+## Documentación adicional
+
+Para una explicación a fondo del proyecto, recorrido archivo por archivo, decisiones técnicas detalladas, anatomía de una traza de Langfuse, Q&A anticipado para la defensa en vivo y glosario, leer [`GUIA.md`](GUIA.md).

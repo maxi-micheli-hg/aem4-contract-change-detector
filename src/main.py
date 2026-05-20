@@ -1,19 +1,19 @@
-"""Entry point — multi-agent contract comparison pipeline.
+"""Entry point — pipeline multi-agente de comparación de contratos.
 
-Usage:
-    uv run python src/main.py <original_image> <amendment_image>
+Uso:
+    uv run python src/main.py <imagen_original> <imagen_enmienda>
 
-Pipeline (5 stages, all traced in Langfuse under root span `contract-analysis`):
+Pipeline (5 etapas, todas trazadas en Langfuse bajo el span raíz `contract-analysis`):
     1. parse_original_contract     (GPT-4o Vision)
     2. parse_amendment_contract    (GPT-4o Vision)
-    3. contextualization_agent     ("Analista Senior" — structural map)
-    4. extraction_agent            ("Auditor Legal Forense" — Pydantic JSON)
-    5. Pydantic validation         (automatic via with_structured_output)
+    3. contextualization_agent     ("Analista Senior" — mapa estructural)
+    4. extraction_agent            ("Auditor Legal Forense" — JSON Pydantic)
+    5. Validación Pydantic         (automática vía with_structured_output)
 
-Exit codes:
-    0 - success, JSON printed to stdout
-    1 - Pydantic ValidationError
-    2 - IO / API / argument error
+Códigos de salida:
+    0 - éxito, JSON impreso por stdout
+    1 - ValidationError de Pydantic
+    2 - error de IO / API / argumento
 
 ----------------------------------------------------------------------------
 GUÍA DE LECTURA (ver también GUIA.md en la raíz del repo):
@@ -24,7 +24,7 @@ GUÍA DE LECTURA (ver también GUIA.md en la raíz del repo):
     los hijos.
   - La idea de tener TODA la lógica de un agente encapsulada en su clase
     (ContextualizationAgent, ExtractionAgent) y que main.py solo las
-    instancie + llame `.run()` es lo que el rubric 1.2 llama "separación
+    instancie + llame `.run()` es lo que la rúbrica 1.2 llama "separación
     clara de responsabilidades".
 ----------------------------------------------------------------------------
 """
@@ -56,8 +56,8 @@ if str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 # ---------------------------------------------------------------------------
-# Imports del proyecto (después del path manipulation, por eso ruff queda
-# silenciado con per-file-ignore E402 en pyproject.toml).
+# Imports del proyecto (después de la manipulación del path; por eso ruff
+# queda silenciado con per-file-ignore E402 en pyproject.toml).
 # ---------------------------------------------------------------------------
 from langchain_openai import ChatOpenAI
 from openai import APITimeoutError, RateLimitError
@@ -79,51 +79,51 @@ def _parse_args() -> argparse.Namespace:
     """Argparse: 2 imágenes posicionales + flag opcional para desactivar Langfuse.
 
     El help text de cada argumento aparece cuando corrés `... --help`. El
-    epilog inyecta todo el docstring de este módulo, así el grader puede
+    epilog inyecta todo el docstring de este módulo, así el corrector puede
     ver el pipeline completo con --help sin abrir el archivo.
     """
     parser = argparse.ArgumentParser(
-        description="Compare an original contract with its amendment and produce a "
-        "Pydantic-validated JSON describing every change.",
+        description="Compara un contrato original con su enmienda y produce un "
+        "JSON validado por Pydantic describiendo cada cambio.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
     parser.add_argument(
         "original_image",
         type=Path,
-        help="Path to the scanned image of the original contract (.jpg/.jpeg/.png).",
+        help="Ruta a la imagen escaneada del contrato original (.jpg/.jpeg/.png).",
     )
     parser.add_argument(
         "amendment_image",
         type=Path,
-        help="Path to the scanned image of the amendment / adenda.",
+        help="Ruta a la imagen escaneada de la enmienda / adenda.",
     )
     parser.add_argument(
         "--no-langfuse",
         action="store_true",
-        help="Disable Langfuse tracing (use only for offline debugging).",
+        help="Desactiva el tracing de Langfuse (usar solo para debugging offline).",
     )
     return parser.parse_args()
 
 
 def _build_llm() -> ChatOpenAI:
-    """One ChatOpenAI(gpt-4o) instance shared by parser + both agents.
+    """Una sola instancia de ChatOpenAI(gpt-4o) compartida entre el parser y los 2 agentes.
 
-    Defensive settings — cada uno apunta a una línea del rubric (2.2):
+    Settings defensivos — cada uno apunta a una línea de la rúbrica (2.2):
 
       - temperature=0       Outputs reproducibles. Misma imagen + mismo
-                            prompt -> mismo output. Crítico para la
-                            defensa en vivo (sin sorpresas).
-      - max_retries=2       OpenAI SDK reintenta automáticamente cuando
-                            ve un APITimeoutError o RateLimitError. 2
-                            retries con backoff exponencial cubren la
+                            prompt -> mismo output. Crítico para la defensa
+                            en vivo (sin sorpresas).
+      - max_retries=2       El SDK de OpenAI reintenta automáticamente
+                            cuando ve un APITimeoutError o RateLimitError.
+                            2 reintentos con backoff exponencial cubren la
                             mayoría de errores transitorios sin enmascarar
                             problemas reales.
       - timeout=60          El default de OpenAI es 600s (10 minutos!).
-                            Demasiado para nuestra Visión, donde cualquier
-                            llamada que tarde > 1 min está claramente
-                            stuck. 60s ayuda a que los errores se vean
-                            rápido en desarrollo.
+                            Demasiado para nuestra visión, donde cualquier
+                            llamada que tarde > 1 min está claramente colgada.
+                            60s ayuda a que los errores aparezcan rápido
+                            durante desarrollo.
       - api_key=...         Pasada desde el .env. Si falta, get_openai_api_key()
                             lanza EnvironmentError con instrucciones.
                             Nunca hardcoded en el código.
@@ -138,11 +138,11 @@ def _build_llm() -> ChatOpenAI:
 
 
 def _run_pipeline(args: argparse.Namespace) -> int:
-    """Execute the 4 stages under one Langfuse root span. Returns exit code.
+    """Ejecuta las 4 etapas bajo un único span raíz de Langfuse. Devuelve exit code.
 
-    Trace hierarchy creada por esta función:
+    Jerarquía de la traza creada por esta función:
 
-        contract-analysis  (root, abierto acá abajo)
+        contract-analysis  (raíz, abierto acá abajo)
         ├── parse_original_contract       (abierto en image_parser.py)
         ├── parse_amendment_contract      (abierto en image_parser.py)
         ├── contextualization_agent       (abierto en el agente)
@@ -150,19 +150,19 @@ def _run_pipeline(args: argparse.Namespace) -> int:
 
     El truco es que `langfuse.start_as_current_observation()` detecta si
     hay un span activo en el contexto. Si lo hay, el nuevo span se vuelve
-    HIJO automáticamente. Por eso main.py abre solo el root y los demás
+    HIJO automáticamente. Por eso main.py abre solo el raíz y los demás
     se anidan naturalmente.
     """
     load_env()
     llm = _build_llm()
     # obs = wrapper que tiene el cliente de Langfuse + el CallbackHandler.
-    # Si --no-langfuse fue pasado, ambos son None y el código de abajo
-    # opera como no-op (sin trazas, pero corre igual).
+    # Si se pasó --no-langfuse, ambos son None y el código de abajo opera
+    # como no-op (sin trazas, pero corre igual).
     obs = get_observability(enabled=not args.no_langfuse)
     callbacks = obs.callbacks  # lista vacía si Langfuse está desactivado
 
     try:
-        # Abrimos el span raíz si hay cliente Langfuse, si no usamos
+        # Abrimos el span raíz si hay cliente Langfuse; si no, usamos
         # nullcontext() (un context manager no-op del stdlib) para que el
         # `with` siguiente funcione igual sin tener que ramificar el código.
         if obs.client is not None:
@@ -180,7 +180,7 @@ def _run_pipeline(args: argparse.Namespace) -> int:
             ctx = nullcontext()
 
         with ctx as root_span:
-            # Etapa 1 — parse imagen original. Abre su propio span hijo
+            # Etapa 1 — parsear la imagen original. Abre su propio span hijo
             # `parse_original_contract` adentro de image_parser.py.
             original_text = parse_contract_image(
                 args.original_image,
@@ -190,7 +190,7 @@ def _run_pipeline(args: argparse.Namespace) -> int:
                 langfuse_client=obs.client,
             )
 
-            # Etapa 2 — idem para la enmienda.
+            # Etapa 2 — ídem para la enmienda.
             amendment_text = parse_contract_image(
                 args.amendment_image,
                 llm,
@@ -199,7 +199,7 @@ def _run_pipeline(args: argparse.Namespace) -> int:
                 langfuse_client=obs.client,
             )
 
-            # Etapa 3 — Analista Senior produce el mapa estructural.
+            # Etapa 3 — el Analista Senior produce el mapa estructural.
             # Acá instanciamos el agente justo antes de usarlo. Podría
             # estar instanciado fuera del try/except pero así queda más
             # claro qué pasa en cada etapa.
@@ -209,7 +209,7 @@ def _run_pipeline(args: argparse.Namespace) -> int:
                 callbacks=callbacks,
             )
 
-            # Etapa 4 — Auditor Legal toma el mapa + ambos textos y
+            # Etapa 4 — el Auditor Legal toma el mapa + ambos textos y
             # devuelve un ContractChangeOutput validado (Pydantic).
             # La validación ocurre adentro de with_structured_output(),
             # no necesitamos llamar `model_validate()` manualmente.
@@ -221,7 +221,7 @@ def _run_pipeline(args: argparse.Namespace) -> int:
             )
 
             # Adjuntamos el output al span raíz para que aparezca en el
-            # dashboard de Langfuse cuando el grader lo abra (sin tener
+            # dashboard de Langfuse cuando el corrector lo abra (sin tener
             # que hacer drill-down al extraction_agent).
             if root_span is not None:
                 root_span.update(
@@ -232,8 +232,8 @@ def _run_pipeline(args: argparse.Namespace) -> int:
                     }
                 )
 
-        # Output al stdout. `console.print_json` renderiza con sintaxis
-        # de colores en una terminal; en una pipe se degrada a JSON plano.
+        # Output a stdout. `console.print_json` renderiza con colores de
+        # sintaxis en una terminal; en un pipe degrada a JSON plano.
         console.rule("[bold green]ContractChangeOutput[/bold green]")
         console.print_json(result.model_dump_json(indent=2))
         return 0
@@ -241,19 +241,19 @@ def _run_pipeline(args: argparse.Namespace) -> int:
     # ---- Manejo de errores ---------------------------------------------------
     # 3 ramas separadas porque cada una merece un exit code distinto y un
     # mensaje distinto. NO uso `except Exception: pass` ni `except` genérico
-    # — la consigna premia errores ruidosos sobre éxitos silenciosos.
+    # — la rúbrica premia errores ruidosos sobre éxitos silenciosos.
     except (FileNotFoundError, ValueError) as e:
         # Input del usuario: ruta no existe, extensión no soportada, etc.
-        log.error(f"[error]Input error: {e}[/error]")
+        log.error(f"[error]Error de input: {e}[/error]")
         return 2
     except (APITimeoutError, RateLimitError, OSError) as e:
-        # API de OpenAI siguió fallando después de los 2 retries internos.
-        log.error(f"[error]API or IO error after retries: {e}[/error]")
+        # La API de OpenAI siguió fallando después de los 2 reintentos.
+        log.error(f"[error]Error de API o IO después de los reintentos: {e}[/error]")
         return 2
     except ValidationError as e:
         # El extractor devolvió algo que no matchea ContractChangeOutput.
-        # Muy raro con structured outputs, pero el rubric pide manejarlo.
-        log.error(f"[error]Pydantic validation failed: {e}[/error]")
+        # Muy raro con structured outputs, pero la rúbrica lo pide.
+        log.error(f"[error]Falló la validación Pydantic: {e}[/error]")
         return 1
     finally:
         # SIEMPRE flusheamos, incluso si hubo excepción. Sin esto las
@@ -263,7 +263,7 @@ def _run_pipeline(args: argparse.Namespace) -> int:
 
 
 def main() -> None:
-    """Punto de entrada. Solo encadena _parse_args -> _run_pipeline -> sys.exit."""
+    """Punto de entrada. Encadena _parse_args -> _run_pipeline -> sys.exit."""
     args = _parse_args()
     code = _run_pipeline(args)
     sys.exit(code)

@@ -1,9 +1,10 @@
-"""Langfuse plumbing.
+"""Plumbing de Langfuse.
 
-One `Langfuse` client + one `CallbackHandler` created at startup. The handler
-is injected into every LangChain `.invoke()` so all LLM calls become
-`generation` observations under whatever span is currently active. The client
-is used by `main.py` to open the root span and to flush traces at exit.
+Un solo cliente `Langfuse` + un solo `CallbackHandler` creados al inicio.
+El handler se inyecta en cada `.invoke()` de LangChain para que todas las
+llamadas al LLM se vuelvan observaciones `generation` bajo cualquier span
+que esté activo en ese momento. El cliente lo usa `main.py` para abrir el
+span raíz y para flushear las trazas antes de salir.
 
 ----------------------------------------------------------------------------
 GUÍA DE LECTURA — la "magia" de Langfuse en este proyecto:
@@ -51,16 +52,17 @@ log = get_logger(__name__)
 
 
 class Observability:
-    """Holds the Langfuse handler + client.
+    """Contenedor del handler + cliente Langfuse.
 
-    Pass `handler` as a callback to every LangChain `invoke()` so the LLM
-    call is captured as a child `generation` observation. Use `client` in
-    `main.py` to open the root span via `start_as_current_observation`.
+    Pasá `handler` como callback a cada `invoke()` de LangChain para que
+    la llamada al LLM se capture como una observación `generation` hija.
+    Usá `client` en `main.py` para abrir el span raíz vía
+    `start_as_current_observation`.
 
-    La clase también funciona con handler=None / client=None — eso es
-    el modo "Langfuse disabled" (e.g., cuando se corre con --no-langfuse).
-    El resto del código no tiene que ramificar; los métodos `.callbacks`
-    y `.flush()` son no-op en ese caso.
+    La clase también funciona con handler=None / client=None — ese es
+    el modo "Langfuse desactivado" (por ejemplo cuando se corre con
+    --no-langfuse). El resto del código no tiene que ramificar; los
+    métodos `.callbacks` y `.flush()` son no-op en ese caso.
     """
 
     def __init__(self, handler: Any | None, client: Any | None) -> None:
@@ -85,19 +87,19 @@ class Observability:
         """
         if self.client is not None:
             self.client.flush()
-            log.info("[success]Langfuse trace flushed[/success]")
+            log.info("[success]Traza de Langfuse flusheada[/success]")
 
 
 def get_observability(enabled: bool = True) -> Observability:
-    """Build the Langfuse client + callback handler, or a no-op pair if disabled.
+    """Construye el cliente de Langfuse + el callback handler, o un par no-op si está desactivado.
 
-    Reads LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY / LANGFUSE_HOST from `.env`.
+    Lee LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY / LANGFUSE_HOST desde `.env`.
 
     Args:
-        enabled: True (default) construye y conecta a Langfuse.
-            False salta la conexión y devuelve un Observability con
+        enabled: True (por default) construye y conecta a Langfuse.
+            False saltea la conexión y devuelve un Observability con
             handler=None / client=None — útil para debugging offline
-            cuando no querés gastar quota de Langfuse.
+            cuando no querés gastar cuota de Langfuse.
 
     Returns:
         Instancia de Observability lista para usar.
@@ -105,7 +107,7 @@ def get_observability(enabled: bool = True) -> Observability:
     load_env()
 
     if not enabled:
-        log.info("Langfuse disabled — running without trace capture")
+        log.info("Langfuse desactivado — corriendo sin captura de trazas")
         return Observability(handler=None, client=None)
 
     # LAZY IMPORT: solo importamos langfuse cuando enabled=True.
@@ -125,5 +127,5 @@ def get_observability(enabled: bool = True) -> Observability:
     # Handler que pasamos como callback a cada llm.invoke() — captura
     # las generations automáticamente.
     handler = CallbackHandler()
-    log.info(f"Langfuse enabled - host=[cyan]{creds['host']}[/cyan]")
+    log.info(f"Langfuse activado - host=[cyan]{creds['host']}[/cyan]")
     return Observability(handler=handler, client=client)

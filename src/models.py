@@ -1,14 +1,15 @@
-"""Pydantic schema for the final pipeline output.
+"""Schema Pydantic para el output final del pipeline.
 
-`ContractChangeOutput` is the strict contract between the ExtractionAgent and
-any downstream consumer (compliance dashboards, CRMs, audit logs). The three
-required fields are mandated by the project consigna.
+`ContractChangeOutput` es el contrato estricto entre el ExtractionAgent y
+cualquier consumidor downstream (dashboards de compliance, CRMs, logs de
+auditoría). Los tres campos requeridos están mandados por la consigna del
+proyecto.
 
-The `description` strings on each Field are intentionally rich: when this
-model is used via `ChatOpenAI(...).with_structured_output(ContractChangeOutput)`,
-LangChain forwards them to the OpenAI structured-outputs API as the JSON
-schema `description` for the corresponding property, and GPT-4o reads them
-as part of its generation instructions.
+Los strings de `description` de cada Field son intencionalmente ricos:
+cuando este modelo se usa vía `ChatOpenAI(...).with_structured_output(ContractChangeOutput)`,
+LangChain los reenvía a la API de structured outputs de OpenAI como la
+`description` del JSON schema para la propiedad correspondiente, y GPT-4o
+las lee como parte de sus instrucciones de generación.
 
 ----------------------------------------------------------------------------
 GUÍA DE LECTURA — el truco más sutil del proyecto:
@@ -39,7 +40,7 @@ from pydantic import BaseModel, Field
 
 
 class ContractChangeOutput(BaseModel):
-    """Structured result of comparing an original contract to its amendment.
+    """Resultado estructurado de comparar un contrato original con su enmienda.
 
     Los 3 campos son obligatorios (el `...` en Field = required). Los nombres
     están literalmente especificados en la consigna del bootcamp y no se pueden
